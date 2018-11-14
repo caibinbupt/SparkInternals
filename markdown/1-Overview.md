@@ -23,8 +23,13 @@
 		
 - 每个 Worker 上存在一个或者多个 ExecutorBackend 进程。每个进程包含一个 Executor 对象，该对象持有一个线程池，每个线程可以执行一个 task。
 - 每个 application 包含一个 driver 和多个 executors，每个 executor 里面运行的 tasks 都属于同一个 application。
-- 在 Standalone 版本中，ExecutorBackend 被实例化成 CoarseGrainedExecutorBackend 进程。在我部署的集群中每个 Worker 只运行了一个 CoarseGrainedExecutorBackend 进程，没有发现如何配置多个 CoarseGrainedExecutorBackend 进程。（应该是运行多个 applications 的时候会产生多个进程，这个我还没有实验）
+- 在 Standalone 版本中，ExecutorBackend 被实例化成 CoarseGrainedExecutorBackend 进程。
+
+	> 在我部署的集群中每个 Worker 只运行了一个 CoarseGrainedExecutorBackend 进程，没有发现如何配置多个 CoarseGrainedExecutorBackend 进程。（应该是运行多个 applications 的时候会产生多个进程，这个我还没有实验，）
+	>
+	> 想了解  Worker 和 Executor 的关系详情，可以参阅  [@OopsOutOfMemory](http://weibo.com/oopsoom) 同学写的 [Spark Executor Driver资源调度小结](http://blog.csdn.net/oopsoom/article/details/38763985) 。
 - Worker 通过持有 ExecutorRunner 对象来控制 CoarseGrainedExecutorBackend 的启停。
+	
 
 了解了部署图之后，我们先给出一个 job 的例子，然后概览一下 job 如何生成与运行。
 
@@ -118,7 +123,7 @@ object GroupByTest {
 - 执行 RDD 上的 transformation 操作（这里是 flatMap）以后，生成 FlatMappedRDD，其中每个 partition 包含一个 Array[(Int, Array[Byte])]。
 - 第一个 count() 执行时，先在每个 partition 上执行 count，然后执行结果被发送到 driver，最后在 driver 端进行 sum。
 - 由于 FlatMappedRDD 被 cache 到内存，因此这里将里面的 partition 都换了一种颜色表示。
-- groupByKey 产生了后面三个 RDD，为什么产生这三个在后面章节讨论。
+- groupByKey 产生了后面两个 RDD，为什么产生这两个在后面章节讨论。
 - 如果 job 需要 shuffle，一般会产生 ShuffledRDD。该 RDD 与前面的 RDD 的关系类似于 Hadoop 中 mapper 输出数据与 reducer 输入数据之间的关系。
 - MapPartitionsRDD 里包含 groupByKey() 的结果。
 - 最后将 MapPartitionsRDD 中的 每个value（也就是Array[Byte]）都转换成 Iterable 类型。
@@ -134,7 +139,7 @@ object GroupByTest {
 
 可以看到 GroupByTest 这个 application 产生了两个 job，第一个 job 由第一个 action（也就是 `pairs1.count`）触发产生，分析一下第一个 job：
 
-- 整个 job 只包含 1 个 stage。
+- 整个 job 只包含 1 个 stage（不明白什么是stage没关系，后面章节会解释，这里只需知道有这样一个概念）。
 - Stage 0 包含 100 个 ResultTask。
 - 每个 task 先计算 flatMap，产生 FlatMappedRDD，然后执行 action() 也就是 count()，统计每个 partition 里 records 的个数，比如 partition 99 里面只含有 9 个 records。
 - 由于 pairs1 被声明要进行 cache，因此在 task 计算得到 FlatMappedRDD 后会将其包含的 partitions 都 cache 到 executor 的内存。
